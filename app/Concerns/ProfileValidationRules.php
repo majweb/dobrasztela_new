@@ -4,6 +4,7 @@ namespace App\Concerns;
 
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 trait ProfileValidationRules
@@ -43,9 +44,36 @@ trait ProfileValidationRules
             'string',
             'email',
             'max:255',
-            $userId === null
-                ? Rule::unique(User::class)
-                : Rule::unique(User::class)->ignore($userId),
+            'confirmed',
+            $this->uniqueEmailRule($userId),
         ];
+    }
+
+    /**
+     * Custom rule for cross-column unique email validation.
+     */
+    protected function uniqueEmailRule(?int $userId = null, array $additionalColumns = ['email', 'companyEmailApplication']): \Closure
+    {
+        return function ($attribute, $value, $fail) use ($userId, $additionalColumns) {
+            $query = DB::table('users')
+                ->leftJoin('agency_cards', 'users.id', '=', 'agency_cards.user_id')
+                ->where(function ($q) use ($value, $additionalColumns) {
+                    foreach ($additionalColumns as $column) {
+                        if ($column === 'email') {
+                            $q->orWhere('users.email', $value);
+                        } else {
+                            $q->orWhere('agency_cards.'.$column, $value);
+                        }
+                    }
+                });
+
+            if ($userId) {
+                $query->where('users.id', '<>', $userId);
+            }
+
+            if ($query->exists()) {
+                $fail(__('validation.unique', ['attribute' => $attribute]));
+            }
+        };
     }
 }

@@ -13,7 +13,7 @@ use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'role_id', 'agency_id', 'status', 'phone'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -32,5 +32,30 @@ class User extends Authenticatable implements PasskeyUser
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    public function agencyCard()
+    {
+        return $this->hasOne(AgencyCard::class);
+    }
+
+    public function agencyDetail()
+    {
+        return $this->hasOne(AgencyDetail::class);
+    }
+
+    public function isAgency()
+    {
+        return (int) $this->role_id === 2;
+    }
+
+    public function isAdmin()
+    {
+        return (int) $this->role_id === 1;
     }
 }

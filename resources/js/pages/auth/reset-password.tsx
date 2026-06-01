@@ -16,14 +16,14 @@ type Props = {
 export default function ResetPassword({ token, email, passwordRules }: Props) {
     return (
         <>
-            <Head title="Reset password" />
+            <Head title="Resetowanie hasła" />
 
             <Form
                 {...update.form()}
                 transform={(data) => ({ ...data, token, email })}
                 resetOnSuccess={['password', 'password_confirmation']}
             >
-                {({ processing, errors }) => (
+                {({ data, setData, processing, errors }) => (
                     <div className="grid gap-6">
                         <div className="grid gap-2">
                             <Label htmlFor="email">Email</Label>
@@ -43,29 +43,40 @@ export default function ResetPassword({ token, email, passwordRules }: Props) {
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password">Hasło</Label>
                             <PasswordInput
                                 id="password"
                                 name="password"
+                                value={data.password}
+                                onChange={(e) => setData('password', e.target.value)}
                                 autoComplete="new-password"
                                 className="mt-1 block w-full"
                                 autoFocus
-                                placeholder="Password"
+                                placeholder="Hasło"
                                 passwordrules={passwordRules}
+                                onGenerate={(password) => {
+                                    setData((prev: any) => ({
+                                        ...prev,
+                                        password,
+                                        password_confirmation: password,
+                                    }));
+                                }}
                             />
                             <InputError message={errors.password} />
                         </div>
 
                         <div className="grid gap-2">
                             <Label htmlFor="password_confirmation">
-                                Confirm password
+                                Potwierdź hasło
                             </Label>
                             <PasswordInput
                                 id="password_confirmation"
                                 name="password_confirmation"
+                                value={data.password_confirmation}
+                                onChange={(e) => setData('password_confirmation', e.target.value)}
                                 autoComplete="new-password"
                                 className="mt-1 block w-full"
-                                placeholder="Confirm password"
+                                placeholder="Potwierdź hasło"
                                 passwordrules={passwordRules}
                             />
                             <InputError
@@ -81,7 +92,7 @@ export default function ResetPassword({ token, email, passwordRules }: Props) {
                             data-test="reset-password-button"
                         >
                             {processing && <Spinner />}
-                            Reset password
+                            Resetuj hasło
                         </Button>
                     </div>
                 )}
@@ -91,6 +102,6 @@ export default function ResetPassword({ token, email, passwordRules }: Props) {
 }
 
 ResetPassword.layout = {
-    title: 'Reset password',
-    description: 'Please enter your new password below',
+    title: 'Resetowanie hasła',
+    description: 'Proszę wpisać nowe hasło poniżej',
 };
