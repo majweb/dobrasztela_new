@@ -1,9 +1,10 @@
 import { Head, useForm, router } from '@inertiajs/react';
 import { Briefcase, Car, Upload, User, X } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import type { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import Select from 'react-select';
 
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
@@ -20,6 +21,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { reactSelectStyles, HideGroupHeading, HideGroupMenuList } from '@/lib/select-styles';
+import { cn } from '@/lib/utils';
 import { login } from '@/routes';
 import { store, validateStep1 } from '@/routes/register';
 
@@ -33,10 +36,15 @@ type Consent = {
 type Props = {
     passwordRules: string;
     consents: Record<string, Consent[]>;
+    langs: { id: number; name: string }[];
+    langLevels: { id: number; name: string; value: number }[];
+    countries: { id: number; name: string }[];
+    lands: { id: number; name: string; short: string; country_id: number }[];
 };
 
-export default function Register({ passwordRules, consents }: Props) {
+export default function Register({ passwordRules, consents, langs, langLevels, lands }: Props) {
     const [step, setStep] = useState(1);
+    const [isMounted, setIsMounted] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
 
     // Stan dla przycinania obrazu
@@ -50,14 +58,57 @@ export default function Register({ passwordRules, consents }: Props) {
     const [previewUrl, setPreviewUrl] = useState<string>('');
     const imgRef = useRef<HTMLImageElement | null>(null);
 
-    const [isMounted, setIsMounted] = useState(false);
+    const [langMenuOpen, setLangMenuOpen] = useState(false);
+
+
+    const languagesList = langs
+        .filter(l => {
+            const name = (l.name || (l as any).lang || '').toLowerCase();
+
+            return name !== 'niemiecki' && name !== 'niemiecki (wszystkie poziomy)';
+        })
+        .map(l => ({ label: l.name || (l as any).lang, value: l.id, type: 'other' }));
+
+    const regionsList = lands
+        .filter(l => l.country_id === 11) // Polska ID 11
+        .map(l => ({
+            label: l.name,
+            value: l.id
+        }));
+
+    const langOptions = useMemo(() => {
+        const germanLevels = langLevels
+            .map(level => ({
+                label: (level as any).name || (level as any).level || (level as any).lang,
+                value: level.id,
+                type: 'de'
+            }));
+
+        const options = [];
+
+        if (germanLevels.length > 0) {
+            options.push({
+                label: 'Niemiecki',
+                options: germanLevels
+            });
+        }
+
+        if (languagesList.length > 0) {
+            options.push({
+                label: 'Inny',
+                options: languagesList
+            });
+        }
+
+        return options;
+    }, [langLevels, languagesList]);
 
     useEffect(() => {
-        const timeout = setTimeout(() => {
+        const timer = setTimeout(() => {
             setIsMounted(true);
         }, 0);
 
-        return () => clearTimeout(timeout);
+        return () => clearTimeout(timer);
     }, []);
 
     useEffect(() => {
@@ -88,8 +139,56 @@ export default function Register({ passwordRules, consents }: Props) {
         invoiceAddressPostalCode: '',
         invoiceAddressPlace: '',
         invoiceAddressCountry: 'Polska',
+        region: '',
+        regionText: '',
+        de: { type: 'de', value: '' } as { type: string; value: string | number },
+        other: [] as { label: string; value: number }[],
+        otherCountry: false,
         consents: {} as Record<number, boolean>,
     });
+
+    const isFirstRun = useRef(true);
+
+    useEffect(() => {
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+
+            return;
+        }
+
+        // Reset wszystkich pól przy zmianie roli
+        setData({
+            ...data,
+            name: '',
+            email: '',
+            email_confirmation: '',
+            password: '',
+            password_confirmation: '',
+            firstName: '',
+            lastName: '',
+            phone: '',
+            companyEmailApplication: '',
+            companyWebsite: '',
+            fileuploadCard: null,
+            invoiceName: '',
+            invoiceNip: '',
+            invoiceRegon: '',
+            invoiceAddressStreet: '',
+            invoiceAddressPostalCode: '',
+            invoiceAddressPlace: '',
+            invoiceAddressCountry: 'Polska',
+            region: '',
+            regionText: '',
+            de: { type: 'de', value: 1 },
+            other: [],
+            otherCountry: false,
+            consents: {},
+        });
+
+        clearErrors();
+        setStep(1);
+        setPreviewUrl('');
+    }, [data.role_id]);
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -144,6 +243,21 @@ export default function Register({ passwordRules, consents }: Props) {
         setScale(1);
         setIsSelectDialogOpen(false);
         setIsCropDialogOpen(true);
+    };
+
+    const handleToggleAllConsents = () => {
+        if (!currentConsents) {
+            return;
+        }
+
+        const allConsents = { ...data.consents };
+        const areAllSelected = currentConsents.every((consent) => data.consents[consent.id] === true);
+
+        currentConsents.forEach((consent) => {
+            allConsents[consent.id] = !areAllSelected;
+        });
+
+        setData('consents', allConsents);
     };
 
     const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -237,10 +351,6 @@ export default function Register({ passwordRules, consents }: Props) {
         setIsCropDialogOpen(false);
     };
 
-    if (!isMounted) {
-        return null;
-    }
-
     const getConsentsForRole = () => {
         if (data.role_id === '2') {
             return consents['Rejestracja pracodawcy'] || [];
@@ -259,6 +369,14 @@ export default function Register({ passwordRules, consents }: Props) {
 
     const currentConsents = getConsentsForRole();
 
+    if (!isMounted) {
+        return (
+            <div className="flex min-h-[400px] items-center justify-center">
+                <Spinner className="h-8 w-8 text-primary" />
+            </div>
+        );
+    }
+
     return (
         <>
             <Head title="Zarejestruj się" />
@@ -266,7 +384,7 @@ export default function Register({ passwordRules, consents }: Props) {
                 <div className="grid gap-6">
                     {step === 1 && (
                         <div className="grid gap-2">
-                            <Label>`     konta</Label>
+                            <Label>Typ konta</Label>
                             <div className="grid grid-cols-3 gap-4">
                                 <button
                                     type="button"
@@ -313,13 +431,17 @@ export default function Register({ passwordRules, consents }: Props) {
                         <>
                             {step === 1 ? (
                                 <>
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
                                             <Label htmlFor="firstName">Imię*</Label>
                                             <Input
                                                 id="firstName"
                                                 value={data.firstName}
-                                                onChange={(e) => setData('firstName', e.target.value)}
+                                                onChange={(e) => {
+                                                    setData('firstName', e.target.value);
+                                                    setData('name', `${e.target.value} ${data.lastName}`.trim());
+                                                }}
+                                                aria-invalid={!!errors.firstName}
                                             />
                                         </div>
                                         <div className="grid gap-2">
@@ -327,56 +449,63 @@ export default function Register({ passwordRules, consents }: Props) {
                                             <Input
                                                 id="lastName"
                                                 value={data.lastName}
-                                                onChange={(e) => setData('lastName', e.target.value)}
+                                                onChange={(e) => {
+                                                    setData('lastName', e.target.value);
+                                                    setData('name', `${data.firstName} ${e.target.value}`.trim());
+                                                }}
+                                                aria-invalid={!!errors.lastName}
                                             />
                                         </div>
                                         {(errors.firstName || errors.lastName) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
+                                            <div className="col-span-2 space-y-1">
                                                 <InputError message={errors.firstName} />
                                                 <InputError message={errors.lastName} />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
-                                            <Label htmlFor="email">Email*</Label>
+                                            <Label htmlFor="email">Email<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="email"
                                                 type="email"
                                                 value={data.email}
                                                 onChange={(e) => setData('email', e.target.value)}
+                                                aria-invalid={!!errors.email}
                                             />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label htmlFor="email_confirmation">Powtórz email*</Label>
+                                            <Label htmlFor="email_confirmation">Powtórz email<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="email_confirmation"
                                                 type="email"
                                                 value={data.email_confirmation}
                                                 onChange={(e) => setData('email_confirmation', e.target.value)}
+                                                aria-invalid={!!errors.email_confirmation}
                                             />
                                         </div>
                                         {(errors.email || errors.email_confirmation) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
+                                            <div className="col-span-2 space-y-1">
                                                 <InputError message={errors.email} />
                                                 <InputError message={errors.email_confirmation} />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid gap-2 pb-4">
-                                        <Label htmlFor="companyEmailApplication">E-mail do aplikacji*</Label>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="companyEmailApplication">E-mail do aplikacji<span className="text-brand-burgundy">*</span></Label>
                                         <Input
                                             id="companyEmailApplication"
                                             type="email"
                                             value={data.companyEmailApplication}
                                             onChange={(e) => setData('companyEmailApplication', e.target.value)}
+                                            aria-invalid={!!errors.companyEmailApplication}
                                         />
                                         <InputError message={errors.companyEmailApplication} />
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
                                             <Label htmlFor="password">Hasło*</Label>
                                             <PasswordInput
@@ -399,6 +528,7 @@ export default function Register({ passwordRules, consents }: Props) {
                                                         password_confirmation: password,
                                                     }));
                                                 }}
+                                                aria-invalid={!!errors.password}
                                             />
                                         </div>
                                         <div className="grid gap-2">
@@ -409,44 +539,48 @@ export default function Register({ passwordRules, consents }: Props) {
                                                 onChange={(e) => setData('password_confirmation', e.target.value)}
                                                 autoComplete="new-password"
                                                 passwordrules={passwordRules}
+                                                aria-invalid={!!errors.password_confirmation}
                                             />
                                         </div>
                                         {(errors.password || errors.password_confirmation) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
+                                            <div className="col-span-2 space-y-1">
                                                 <InputError message={errors.password} />
                                                 <InputError message={errors.password_confirmation} />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
-                                            <Label htmlFor="phone">Numer telefonu*</Label>
+                                            <Label htmlFor="phone">Numer telefonu<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="phone"
                                                 value={data.phone}
                                                 onChange={(e) => setData('phone', e.target.value)}
+                                                aria-invalid={!!errors.phone}
                                             />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label htmlFor="companyWebsite">Strona www*</Label>
+                                            <Label htmlFor="companyWebsite">Strona www<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="companyWebsite"
                                                 value={data.companyWebsite}
                                                 onChange={(e) => setData('companyWebsite', e.target.value)}
-                                                placeholder="https://..."
+                                                placeholder="mojastrona.pl"
+                                                addon="https://"
+                                                aria-invalid={!!errors.companyWebsite}
                                             />
                                         </div>
                                         {(errors.phone || errors.companyWebsite) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
+                                            <div className="col-span-2 space-y-1">
                                                 <InputError message={errors.phone} />
                                                 <InputError message={errors.companyWebsite} />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid gap-2 pb-4">
-                                        <Label htmlFor="fileuploadCard">Logo*</Label>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="fileuploadCard">Logo<span className="text-brand-burgundy">*</span></Label>
                                         <div className="group relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/20 bg-brand-light-pink/50 p-6 transition-all hover:border-primary/30 hover:bg-brand-light-pink">
                                             <Input
                                                 id="fileuploadCard"
@@ -454,6 +588,7 @@ export default function Register({ passwordRules, consents }: Props) {
                                                 onChange={onSelectFile}
                                                 accept="image/*"
                                                 className="hidden"
+                                                aria-invalid={!!errors.fileuploadCard}
                                             />
                                             {data.fileuploadCard ? (
                                                 <div className="flex w-full items-center justify-between gap-4 rounded-lg bg-card p-2 shadow-sm border">
@@ -522,9 +657,9 @@ export default function Register({ passwordRules, consents }: Props) {
                                         <span className="text-sm font-bold uppercase tracking-widest text-primary/80">Dane do faktury</span>
                                         <div className="h-1.5 w-16 rounded-full bg-brand-light-pink" />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
-                                            <Label htmlFor="invoiceName">Nazwa firmy*</Label>
+                                            <Label htmlFor="invoiceName">Nazwa firmy<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="invoiceName"
                                                 value={data.invoiceName}
@@ -535,93 +670,115 @@ export default function Register({ passwordRules, consents }: Props) {
                                                         setData('name', e.target.value);
                                                     }
                                                 }}
+                                                aria-invalid={!!errors.invoiceName}
                                             />
                                         </div>
                                         <div className="relative grid gap-2">
-                                            <Label htmlFor="invoiceNip">NIP*</Label>
+                                            <Label htmlFor="invoiceNip">NIP<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="invoiceNip"
                                                 value={data.invoiceNip}
                                                 onChange={(e) => setData('invoiceNip', e.target.value)}
+                                                aria-invalid={!!errors.invoiceNip}
                                             />
                                             <p className="absolute top-full left-0 pt-0.5 text-[11px] text-muted-foreground">np. 1234567890</p>
                                         </div>
                                         {(errors.invoiceName || errors.invoiceNip) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
+                                            <div className="col-span-2 space-y-1">
                                                 <InputError message={errors.invoiceName} />
                                                 <InputError message={errors.invoiceNip} />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
                                             <Label htmlFor="invoiceRegon">REGON</Label>
                                             <Input
                                                 id="invoiceRegon"
                                                 value={data.invoiceRegon}
                                                 onChange={(e) => setData('invoiceRegon', e.target.value)}
+                                                aria-invalid={!!errors.invoiceRegon}
                                             />
                                         </div>
                                         <div className="relative grid gap-2">
-                                            <Label htmlFor="invoiceAddressStreet">Ulica i numer*</Label>
+                                            <Label htmlFor="invoiceAddressStreet">Ulica i numer<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="invoiceAddressStreet"
                                                 value={data.invoiceAddressStreet}
                                                 onChange={(e) => setData('invoiceAddressStreet', e.target.value)}
+                                                aria-invalid={!!errors.invoiceAddressStreet}
                                             />
                                             <p className="absolute top-full left-0 pt-0.5 text-[11px] text-muted-foreground">np. ul. Wiejska 1/2</p>
                                         </div>
                                         {(errors.invoiceRegon || errors.invoiceAddressStreet) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
+                                            <div className="col-span-2 space-y-1">
                                                 <InputError message={errors.invoiceRegon} />
-                                                <InputError message={errors.invoiceAddressStreet} />
+                                                <InputError message={errors.invoiceAddressStreet} className="mt-4" />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="relative grid gap-2">
-                                            <Label htmlFor="invoiceAddressPostalCode">Kod pocztowy*</Label>
+                                            <Label htmlFor="invoiceAddressPostalCode">Kod pocztowy<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="invoiceAddressPostalCode"
                                                 value={data.invoiceAddressPostalCode}
                                                 onChange={(e) => setData('invoiceAddressPostalCode', e.target.value)}
+                                                aria-invalid={!!errors.invoiceAddressPostalCode}
                                             />
                                             <p className="absolute top-full left-0 pt-0.5 text-[11px] text-muted-foreground">np. 00-000</p>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label htmlFor="invoiceAddressPlace">Miejscowość*</Label>
+                                            <Label htmlFor="invoiceAddressPlace">Miejscowość<span className="text-brand-burgundy">*</span></Label>
                                             <Input
                                                 id="invoiceAddressPlace"
                                                 value={data.invoiceAddressPlace}
                                                 onChange={(e) => setData('invoiceAddressPlace', e.target.value)}
+                                                aria-invalid={!!errors.invoiceAddressPlace}
                                             />
                                         </div>
                                         {(errors.invoiceAddressPostalCode || errors.invoiceAddressPlace) && (
-                                            <div className="col-span-2 space-y-1 pt-1">
-                                                <InputError message={errors.invoiceAddressPostalCode} />
+                                            <div className="col-span-2 space-y-1">
+                                                <InputError message={errors.invoiceAddressPostalCode} className="mt-4" />
                                                 <InputError message={errors.invoiceAddressPlace} />
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid gap-2 pb-4">
-                                        <Label htmlFor="invoiceAddressCountry">Kraj*</Label>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="invoiceAddressCountry">Kraj<span className="text-brand-burgundy">*</span></Label>
                                         <Input
                                             id="invoiceAddressCountry"
                                             value={data.invoiceAddressCountry}
                                             onChange={(e) => setData('invoiceAddressCountry', e.target.value)}
+                                            aria-invalid={!!errors.invoiceAddressCountry}
                                         />
                                         <InputError message={errors.invoiceAddressCountry} />
                                     </div>
 
                                     <div className="grid gap-4 py-4">
+                                        {currentConsents && currentConsents.length > 0 && (
+                                            <div className="flex justify-end">
+                                                <Button
+                                                    type="button"
+                                                    variant="link"
+                                                    size="sm"
+                                                    onClick={handleToggleAllConsents}
+                                                    className="h-auto p-0 text-xs text-primary"
+                                                >
+                                                    {currentConsents.every((consent) => data.consents[consent.id] === true)
+                                                        ? 'Odznacz wszystkie zgody'
+                                                        : 'Zaznacz wszystkie zgody'}
+                                                </Button>
+                                            </div>
+                                        )}
                                         {currentConsents && currentConsents.length > 0 ? (
                                             currentConsents.map((consent) => (
                                                 <div key={consent.id} className="flex flex-col gap-1">
                                                     <div className="flex items-start gap-3">
-                                                        <Checkbox
+                                                <Checkbox
                                                             id={`consent-${consent.id}`}
                                                             checked={data.consents[consent.id] || false}
                                                             onCheckedChange={(checked) => {
@@ -631,20 +788,32 @@ export default function Register({ passwordRules, consents }: Props) {
                                                                 });
                                                             }}
                                                             className="cursor-pointer"
+                                                            aria-invalid={!!(errors as any)[`consents.${consent.id}`]}
                                                         />
                                                         <Label
                                                             htmlFor={`consent-${consent.id}`}
-                                                            className="cursor-pointer text-xs font-normal leading-normal"
-                                                            dangerouslySetInnerHTML={{ __html: consent.content }}
-                                                        />
+                                                            className={cn(
+                                                                "cursor-pointer text-xs font-normal leading-normal",
+                                                                !!(errors as any)[`consents.${consent.id}`] && !data.consents[consent.id]
+                                                                    ? "text-brand-burgundy"
+                                                                    : "text-foreground"
+                                                            )}
+                                                        >
+                                                            <span dangerouslySetInnerHTML={{ __html: consent.content }} />
+                                                            {consent.required && <span className="text-brand-burgundy ml-0.5 font-bold">*</span>}
+                                                        </Label>
                                                     </div>
-                                                    <InputError message={errors[`consents.${consent.id}` as keyof typeof errors]} />
+                                                    <InputError message={(errors as any)[`consents.${consent.id}`]} />
                                                 </div>
                                             ))
                                         ) : (
                                             <div className="text-xs text-muted-foreground italic">Brak wymaganych zgód dla tej roli.</div>
                                         )}
-                                        <InputError message={errors.consents} />
+                                        {errors.consents && (
+                                            <div className="text-center">
+                                                <InputError message={errors.consents} />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="mt-6 flex flex-col items-center gap-4">
@@ -668,74 +837,246 @@ export default function Register({ passwordRules, consents }: Props) {
                         </>
                     ) : (
                         <>
-                            <div className="grid gap-2 pb-4">
-                                <Label htmlFor="name">Imię i nazwisko</Label>
-                                <Input
-                                    id="name"
-                                    value={data.name}
-                                    onChange={(e) => setData('name', e.target.value)}
-                                    autoFocus
-                                    autoComplete="name"
-                                />
-                                <InputError message={errors.name} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="firstName">Imię<span className="text-brand-burgundy">*</span></Label>
+                                    <Input
+                                        id="firstName"
+                                        value={data.firstName}
+                                        onChange={(e) => {
+                                            setData('firstName', e.target.value);
+                                            setData('name', `${e.target.value} ${data.lastName}`.trim());
+                                        }}
+                                        autoFocus
+                                        aria-invalid={!!errors.firstName}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="lastName">Nazwisko<span className="text-brand-burgundy">*</span></Label>
+                                    <Input
+                                        id="lastName"
+                                        value={data.lastName}
+                                        onChange={(e) => {
+                                            setData('lastName', e.target.value);
+                                            setData('name', `${data.firstName} ${e.target.value}`.trim());
+                                        }}
+                                        aria-invalid={!!errors.lastName}
+                                    />
+                                </div>
+                                {(errors.firstName || errors.lastName) && (
+                                    <div className="col-span-2 space-y-1">
+                                        <InputError message={errors.firstName} />
+                                        <InputError message={errors.lastName} />
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4 pb-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="grid gap-2">
-                                    <Label htmlFor="email">Adres e-mail</Label>
+                                    <Label htmlFor="email">Adres e-mail<span className="text-brand-burgundy">*</span></Label>
                                     <Input
                                         id="email"
                                         type="email"
                                         value={data.email}
                                         onChange={(e) => setData('email', e.target.value)}
                                         autoComplete="email"
+                                        aria-invalid={!!errors.email}
                                     />
-                                    <InputError message={errors.email} />
                                 </div>
 
                                 <div className="grid gap-2">
-                                    <Label htmlFor="email_confirmation">Powtórz adres e-mail</Label>
+                                    <Label htmlFor="email_confirmation">Powtórz adres e-mail<span className="text-brand-burgundy">*</span></Label>
                                     <Input
                                         id="email_confirmation"
                                         type="email"
                                         value={data.email_confirmation}
                                         onChange={(e) => setData('email_confirmation', e.target.value)}
+                                        aria-invalid={!!errors.email_confirmation}
                                     />
-                                    <InputError message={errors.email_confirmation} />
                                 </div>
+                                {(errors.email || errors.email_confirmation) && (
+                                    <div className="col-span-2 space-y-1">
+                                        <InputError message={errors.email} />
+                                        <InputError message={errors.email_confirmation} />
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="grid gap-2 pb-4">
-                                <Label htmlFor="password">Hasło</Label>
-                                <PasswordInput
-                                    id="password"
-                                    value={data.password}
-                                    onChange={(e) => setData('password', e.target.value)}
-                                    autoComplete="new-password"
-                                    passwordrules={passwordRules}
-                                    onGenerate={(password) => {
-                                        setData((prev) => ({
-                                            ...prev,
-                                            password,
-                                            password_confirmation: password,
-                                        }));
-                                    }}
-                                />
-                                <InputError message={errors.password} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="password">Hasło<span className="text-brand-burgundy">*</span></Label>
+                                    <PasswordInput
+                                        id="password"
+                                        value={data.password}
+                                        onChange={(e) => setData('password', e.target.value)}
+                                        autoComplete="new-password"
+                                        passwordrules={passwordRules}
+                                        onGenerate={(password) => {
+                                            setData((prev) => ({
+                                                ...prev,
+                                                password,
+                                                password_confirmation: password,
+                                            }));
+                                        }}
+                                        aria-invalid={!!errors.password}
+                                    />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="password_confirmation">Powtórz hasło<span className="text-brand-burgundy">*</span></Label>
+                                    <PasswordInput
+                                        id="password_confirmation"
+                                        value={data.password_confirmation}
+                                        onChange={(e) => setData('password_confirmation', e.target.value)}
+                                        autoComplete="new-password"
+                                        aria-invalid={!!errors.password_confirmation}
+                                    />
+                                </div>
+                                {(errors.password || errors.password_confirmation) && (
+                                    <div className="col-span-2 space-y-1">
+                                        <InputError message={errors.password} />
+                                        <InputError message={errors.password_confirmation} />
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="grid gap-2 pb-6">
-                                <Label htmlFor="password_confirmation">Potwierdź hasło</Label>
-                                <PasswordInput
-                                    id="password_confirmation"
-                                    value={data.password_confirmation}
-                                    onChange={(e) => setData('password_confirmation', e.target.value)}
-                                    autoComplete="new-password"
-                                />
-                                <InputError message={errors.password_confirmation} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="phone">Numer telefonu<span className="text-brand-burgundy">*</span></Label>
+                                    <Input
+                                        id="phone"
+                                        value={data.phone}
+                                        onChange={(e) => setData('phone', e.target.value)}
+                                        aria-invalid={!!errors.phone}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="de">Znajomość języka<span className="text-brand-burgundy">*</span></Label>
+                                    <Select
+                                        id="de"
+                                        placeholder="Znajomość języka"
+                                        options={langOptions}
+                                        menuIsOpen={langMenuOpen}
+                                        onMenuOpen={() => setLangMenuOpen(true)}
+                                        onMenuClose={() => setLangMenuOpen(false)}
+                                        aria-invalid={!!(errors as any).de}
+                                        value={
+                                            data.de.type === 'de' && data.de.value
+                                                ? {
+                                                    label: (langLevels.find(l => l.id === (data.de.value as number)) as any)?.name || (langLevels.find(l => l.id === (data.de.value as number)) as any)?.level || (langLevels.find(l => l.id === (data.de.value as number)) as any)?.lang,
+                                                    value: data.de.value,
+                                                    type: 'de'
+                                                }
+                                                : data.other.length > 0
+                                                    ? {
+                                                        label: data.other[0].label,
+                                                        value: data.other[0].value,
+                                                        type: 'other'
+                                                    }
+                                                    : null
+                                        }
+                                        onChange={(option: any) => {
+                                            if (option) {
+                                                if (option.type === 'de') {
+                                                    setData((prev) => ({
+                                                        ...prev,
+                                                        de: { type: 'de', value: option.value },
+                                                        other: [],
+                                                    }));
+                                                } else {
+                                                    setData((prev) => ({
+                                                        ...prev,
+                                                        de: { type: 'other', value: '' },
+                                                        other: [{ label: option.label, value: option.value }],
+                                                    }));
+                                                }
+                                            }
+                                        }}
+                                        styles={reactSelectStyles}
+                                        isSearchable
+                                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                                        noOptionsMessage={() => "Nie znaleziono języka"}
+                                        components={{
+                                            GroupHeading: HideGroupHeading,
+                                            MenuList: HideGroupMenuList,
+                                        }}
+                                    />
+                                </div>
+                                {(errors.phone || (errors as any).de) && (
+                                    <div className="col-span-2 space-y-1">
+                                        <InputError message={errors.phone} />
+                                        <InputError message={errors.de as unknown as string} />
+                                    </div>
+                                )}
                             </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="region">Miejsce zamieszkania (PL)<span className="text-brand-burgundy">*</span></Label>
+                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                        <div className="grid gap-2">
+                                            {!data.otherCountry ? (
+                                                <Select
+                                                    id="region"
+                                                    placeholder="Wybierz województwo"
+                                                    options={regionsList}
+                                                    value={regionsList.find(r => r.value === parseInt(data.region))}
+                                                    onChange={(option: any) => setData('region', option?.value.toString() || '')}
+                                                    styles={reactSelectStyles}
+                                                    isSearchable
+                                                    menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                                                    noOptionsMessage={() => "Nie znaleziono województwa"}
+                                                    aria-invalid={!!errors.region}
+                                                />
+                                            ) : (
+                                                <Input
+                                                    id="regionText"
+                                                    value={data.regionText}
+                                                    onChange={(e) => setData('regionText', e.target.value)}
+                                                    placeholder="Wpisz kraj/miejscowość"
+                                                    autoFocus
+                                                    aria-invalid={!!errors.regionText}
+                                                />
+                                            )}
+                                            <InputError message={data.otherCountry ? errors.regionText : errors.region} />
+                                        </div>
+                                        <div className="flex items-center gap-2 pt-3">
+                                            <Checkbox
+                                                id="otherCountry"
+                                                checked={data.otherCountry}
+                                                onCheckedChange={(checked) => {
+                                                    const isOther = checked === true;
+                                                    setData((prev) => ({
+                                                        ...prev,
+                                                        otherCountry: isOther,
+                                                        region: '',
+                                                        regionText: '',
+                                                    }));
+                                                }}
+                                                aria-invalid={!!errors.otherCountry}
+                                            />
+                                            <Label htmlFor="otherCountry" className="cursor-pointer">
+                                                inny kraj
+                                            </Label>
+                                        </div>
+                                    </div>
+                                </div>
 
                             <div className="grid gap-4 py-4">
+                                {currentConsents && currentConsents.length > 0 && (
+                                    <div className="flex justify-end">
+                                        <Button
+                                            type="button"
+                                            variant="link"
+                                            size="sm"
+                                            onClick={handleToggleAllConsents}
+                                            className="h-auto p-0 text-xs text-primary"
+                                        >
+                                            {currentConsents.every((consent) => data.consents[consent.id] === true)
+                                                ? 'Odznacz wszystkie zgody'
+                                                : 'Zaznacz wszystkie zgody'}
+                                        </Button>
+                                    </div>
+                                )}
                                 {currentConsents && currentConsents.length > 0 ? (
                                     currentConsents.map((consent) => (
                                         <div key={consent.id} className="flex flex-col gap-1">
@@ -750,20 +1091,32 @@ export default function Register({ passwordRules, consents }: Props) {
                                                         });
                                                     }}
                                                     className="cursor-pointer"
+                                                    aria-invalid={!!(errors as any)[`consents.${consent.id}`]}
                                                 />
                                                 <Label
                                                     htmlFor={`consent-${consent.id}`}
-                                                    className="cursor-pointer text-xs font-normal leading-normal"
-                                                    dangerouslySetInnerHTML={{ __html: consent.content }}
-                                                />
+                                                    className={cn(
+                                                        "cursor-pointer text-xs font-normal leading-normal",
+                                                        !!(errors as any)[`consents.${consent.id}`] && !data.consents[consent.id]
+                                                            ? "text-brand-burgundy"
+                                                            : "text-foreground"
+                                                    )}
+                                                >
+                                                    <span dangerouslySetInnerHTML={{ __html: consent.content }} />
+                                                    {consent.required && <span className="text-brand-burgundy ml-0.5 font-bold">*</span>}
+                                                </Label>
                                             </div>
-                                            <InputError message={errors[`consents.${consent.id}` as keyof typeof errors]} />
+                                            <InputError message={(errors as any)[`consents.${consent.id}`]} />
                                         </div>
                                     ))
                                 ) : (
                                     <div className="text-xs text-muted-foreground italic">Brak wymaganych zgód dla tej roli.</div>
                                 )}
-                                <InputError message={errors.consents} />
+                                {errors.consents && (
+                                    <div className="text-center">
+                                        <InputError message={errors.consents} />
+                                    </div>
+                                )}
                             </div>
 
                             <Button type="submit" className="mt-2 w-full" disabled={processing}>

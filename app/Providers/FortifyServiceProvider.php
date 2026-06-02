@@ -74,9 +74,18 @@ class FortifyServiceProvider extends ServiceProvider
                 ->get()
                 ->groupBy('type');
 
+            $langs = DB::table('langs')->get();
+            $langLevels = DB::table('lang_levels')->get();
+            $countries = DB::table('countries')->get();
+            $lands = DB::table('lands')->get();
+
             return Inertia::render('auth/register', [
                 'passwordRules' => Password::defaults()->toPasswordRulesString(),
                 'consents' => $consents,
+                'langs' => $langs,
+                'langLevels' => $langLevels,
+                'countries' => $countries,
+                'lands' => $lands,
             ]);
         });
 

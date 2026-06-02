@@ -1,8 +1,22 @@
 import * as SelectPrimitive from "@radix-ui/react-select"
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, Search } from "lucide-react"
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { Input } from "./input"
+
+function SearchInput({ className, ...props }: React.ComponentProps<typeof Input>) {
+    const inputRef = React.useRef<HTMLInputElement>(null);
+
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            inputRef.current?.focus();
+        }, 0);
+        return () => clearTimeout(timer);
+    }, []);
+
+    return <Input ref={inputRef} className={className} {...props} />;
+}
 
 function Select({
   ...props
@@ -55,8 +69,15 @@ function SelectContent({
   side = "bottom",
   sideOffset = 4,
   align = "center",
+  searchPlaceholder = "Szukaj...",
+  onSearchChange,
+  searchValue,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & {
+  searchPlaceholder?: string;
+  onSearchChange?: (value: string) => void;
+  searchValue?: string;
+}) {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -75,6 +96,25 @@ function SelectContent({
         {...props}
       >
         <SelectScrollUpButton />
+        {onSearchChange && (
+          <div className="sticky top-0 z-10 bg-popover p-2 border-b">
+            <div className="relative flex items-center">
+              <Search className="absolute left-2 h-4 w-4 text-muted-foreground" />
+              <SearchInput
+                className="h-8 pl-8 text-xs"
+                placeholder={searchPlaceholder}
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onKeyDown={(e) => {
+                    // Prevent closing select when pressing space in input
+                    if (e.key === ' ') {
+                        e.stopPropagation();
+                    }
+                }}
+              />
+            </div>
+          </div>
+        )}
         <SelectPrimitive.Viewport
           className={cn(
             "p-1",

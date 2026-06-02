@@ -18,6 +18,10 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolesTableSeeder::class,
             ConsentSeeder::class,
+            LangSeeder::class,
+            LangLevelSeeder::class,
+            CountrySeeder::class,
+            LandSeeder::class,
         ]);
 
         // User::factory(10)->create();

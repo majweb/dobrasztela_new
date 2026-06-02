@@ -6,6 +6,8 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\AgencyCard;
 use App\Models\AgencyDetail;
+use App\Models\Consent;
+use App\Models\SitterDetail;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +39,7 @@ class CreateNewUser implements CreatesNewUsers
             'lastName' => ['required', 'string', 'min:3', 'max:255'],
             'phone' => ['required', 'regex:/^[0-9\s\-]+$/', 'unique:agency_details,phone'],
             'companyEmailApplication' => ['required', 'email', 'max:255', $this->uniqueEmailRule()],
-            'companyWebsite' => ['required', 'url', 'max:255'],
+            'companyWebsite' => ['required', 'string', 'max:255'],
             'fileuploadCard' => ['nullable', 'image', 'max:5120'], // 5MB
         ];
     }
@@ -89,8 +91,36 @@ class CreateNewUser implements CreatesNewUsers
         if (isset($input['role_id']) && in_array((int) $input['role_id'], [2, 3, 5])) {
             $rules = array_merge($rules, [
                 'consents' => ['required', 'array'],
-                'consents.*' => ['accepted'],
             ]);
+
+            // Pobieramy wymagane zgody dla danej roli, aby wymusić ich walidację
+            $roleTypeMap = [
+                2 => 'Rejestracja pracodawcy',
+                3 => 'Rejestracja opiekunki',
+                5 => 'Aplikacja do wielu',
+            ];
+
+            $type = $roleTypeMap[(int) $input['role_id']] ?? null;
+
+            if ($type) {
+                $requiredConsentIds = Consent::where('type', $type)
+                    ->where('required', 1)
+                    ->pluck('id')
+                    ->toArray();
+
+                foreach ($requiredConsentIds as $id) {
+                    $rules["consents.{$id}"] = ['accepted'];
+                }
+            }
+
+            // Obsługa pozostałych zgód, które zostały przesłane (np. opcjonalnych)
+            if (isset($input['consents']) && is_array($input['consents'])) {
+                foreach ($input['consents'] as $key => $value) {
+                    if (!isset($rules["consents.{$key}"])) {
+                        $rules["consents.{$key}"] = ['boolean'];
+                    }
+                }
+            }
         }
 
         // Reguły dla Agencji (rola 2)
@@ -105,11 +135,30 @@ class CreateNewUser implements CreatesNewUsers
                 'invoiceAddressPlace' => ['required', 'string', 'max:255'],
                 'invoiceAddressCountry' => ['required', 'string', 'max:255'],
             ]);
+        } elseif (isset($input['role_id']) && (int) $input['role_id'] === 3) {
+            // Reguły dla Opiekuna (rola 3)
+            $rules = array_merge($rules, [
+                'firstName' => ['required', 'string', 'max:255'],
+                'lastName' => ['required', 'string', 'max:255'],
+                'phone' => ['required', 'string', 'max:255'],
+                'de' => ['required', 'array'],
+                'de.type' => ['required', 'string', 'in:de,other'],
+                'de.value' => ['required_if:de.type,de'],
+                'other' => ['required_if:de.type,other', 'array'],
+                'region' => ['required_unless:otherCountry,true'],
+                'regionText' => ['required_if:otherCountry,true', 'nullable', 'string', 'max:255'],
+            ]);
         } else {
             $rules['name'] = $this->nameRules();
         }
 
-        Validator::make($input, $rules)->validate();
+        Validator::make($input, $rules, [
+            'region.required_unless' => 'Pole region jest wymagane, gdy inny kraj nie jest zaznaczony.',
+            'regionText.required_if' => 'Pole kraj, miejscowość jest wymagane, gdy inny kraj jest zaznaczony.',
+            'consents.required' => 'Ta zgoda jest wymagana.',
+            'consents.*.accepted' => 'Ta zgoda jest wymagana.',
+            'consents.*.required' => 'Ta zgoda jest wymagana.',
+        ])->validate();
 
         return DB::transaction(function () use ($input) {
             $user = User::create([
@@ -122,14 +171,15 @@ class CreateNewUser implements CreatesNewUsers
 
             if ((int) $input['role_id'] === 2) {
                 // Obsługa logotypu
-                $imagePath = null;
+                $imagePath = 'default-firm.png';
                 if (isset($input['fileuploadCard']) && $input['fileuploadCard'] instanceof UploadedFile) {
                     $imagePath = $input['fileuploadCard']->store('agency/'.$user->id, 'public');
+                }
 
-                    // Dodatkowo ustawiamy avatar dla użytkownika, aby był widoczny w dashboardzie
-                    $user->update([
-                        'avatar' => Storage::disk('public')->url($imagePath)
-                    ]);
+                // Dodajemy https:// do strony www jeśli go nie ma
+                $companyWebsite = $input['companyWebsite'] ?? '';
+                if ($companyWebsite && !str_starts_with($companyWebsite, 'http')) {
+                    $companyWebsite = 'https://' . $companyWebsite;
                 }
 
                 // Tworzenie AgencyDetail
@@ -165,7 +215,7 @@ class CreateNewUser implements CreatesNewUsers
                     'companyAddressCountry' => $input['invoiceAddressCountry'],
                     'companyEmail' => $input['email'],
                     'companyEmailApplication' => $input['companyEmailApplication'],
-                    'companyWebsite' => $input['companyWebsite'],
+                    'companyWebsite' => $companyWebsite,
                     'companyMobile1' => $input['phone'],
                 ]);
 
@@ -178,6 +228,23 @@ class CreateNewUser implements CreatesNewUsers
                     'agency_id' => $user->id,
                     'password' => Hash::make($input['password']),
                     'status' => 'active',
+                ]);
+            }
+
+            if ((int) $input['role_id'] === 3) {
+                // Dodatkowe dane dla opiekuna zapisujemy w tabeli sitter_details
+                SitterDetail::create([
+                    'user_id'   => $user->id,
+                    'firstName' => $input['firstName'] ?? null,
+                    'lastName'  => $input['lastName'] ?? null,
+                    'phone'     => $input['phone'] ?? null,
+                    'de'        => $input['de']['type'] === 'de' ? (string) $input['de']['value'] : '1',
+                    'other'     => $input['de']['type'] === 'other' ? $input['other'] : [],
+                    'region'    => (string) ($input['otherCountry'] ? ($input['regionText'] ?: '') : ($input['region'] ?: '')),
+                ]);
+
+                $user->update([
+                    'phone' => $input['phone'] ?? null,
                 ]);
             }
 

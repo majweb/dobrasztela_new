@@ -1,5 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useInitials } from '@/hooks/use-initials';
+import { cn } from '@/lib/utils';
 import type { User } from '@/types';
 
 export function UserInfo({
@@ -10,15 +11,33 @@ export function UserInfo({
     showEmail?: boolean;
 }) {
     const getInitials = useInitials();
+    const isDefaultLogo = user.avatar?.includes('default-firm.png');
 
     return (
         <>
-            <Avatar className="h-8 w-8 overflow-hidden rounded-full">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg bg-neutral-200 text-black dark:bg-neutral-700 dark:text-white">
-                    {getInitials(user.name)}
-                </AvatarFallback>
-            </Avatar>
+            <div className={cn(
+                "h-9 w-9 overflow-hidden transition-all flex items-center justify-center",
+                isDefaultLogo ? "rounded-none bg-transparent" : "rounded-full bg-neutral-200"
+            )}>
+                {isDefaultLogo ? (
+                    <img
+                        src="/images/default-firm.png"
+                        alt={user.name}
+                        className="h-full w-full object-contain scale-150"
+                    />
+                ) : (
+                    <Avatar className="h-full w-full">
+                        <AvatarImage
+                            src={user.avatar}
+                            alt={user.name}
+                            className="h-full w-full object-cover"
+                        />
+                        <AvatarFallback className="rounded-lg bg-neutral-200 text-black dark:bg-neutral-700 dark:text-white">
+                            {getInitials(user.name)}
+                        </AvatarFallback>
+                    </Avatar>
+                )}
+            </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
                 {showEmail && (

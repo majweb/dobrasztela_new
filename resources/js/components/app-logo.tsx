@@ -1,14 +1,21 @@
 import { usePage } from '@inertiajs/react';
 import AppLogoIcon from '@/components/app-logo-icon';
+import { cn } from '@/lib/utils';
 
 export default function AppLogo() {
     const { auth } = usePage().props;
 
     return (
         <>
-            <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground overflow-hidden">
+            <div className={cn(
+                "flex aspect-square size-10 items-center justify-center rounded-md overflow-hidden transition-all",
+                auth.user?.avatar?.includes('default-firm.png') ? "bg-transparent size-11" : "size-15 text-sidebar-primary-foreground"
+            )}>
                 {auth.user?.avatar ? (
-                    <img src={auth.user.avatar} alt="Logo" className="h-full w-full object-contain" />
+                    <img src={auth.user?.avatar?.includes('default-firm.png') ? '/images/default-firm.png' : auth.user.avatar} alt="Logo" className={cn(
+                        "h-full w-full object-contain",
+                        auth.user?.avatar?.includes('default-firm.png') && "scale-150"
+                    )} />
                 ) : (
                     <AppLogoIcon className="size-5" />
                 )}

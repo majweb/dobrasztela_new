@@ -44,7 +44,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboard()} prefetch className="flex items-center gap-2">
+                            <Link href={dashboard()} className="flex items-center gap-2">
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>
