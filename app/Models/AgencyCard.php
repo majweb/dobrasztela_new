@@ -27,6 +27,8 @@ class AgencyCard extends Model
         'companyPhone3',
         'teaser',
         'description',
+        'preferImage',
+        'accepted',
     ];
 
     public function user()

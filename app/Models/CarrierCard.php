@@ -20,6 +20,11 @@ class CarrierCard extends Model
         'companyWebsite',
         'buyTicketWebsite',
         'companyMobile1',
+        'companyMobile',
+        'teaser',
+        'description',
+        'fb_shearer_link',
+        'preferImage',
     ];
 
     public function user()

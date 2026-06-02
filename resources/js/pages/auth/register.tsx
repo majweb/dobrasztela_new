@@ -826,11 +826,6 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                         ) : (
                                             <div className="text-xs text-muted-foreground italic">Brak wymaganych zgód dla tej roli.</div>
                                         )}
-                                        {errors.consents && (
-                                            <div className="text-center">
-                                                <InputError message={errors.consents} />
-                                            </div>
-                                        )}
                                     </div>
 
                                     <div className="mt-6 flex flex-col items-center gap-4">
@@ -1128,11 +1123,6 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                     ))
                                 ) : (
                                     <div className="text-xs text-muted-foreground italic">Brak wymaganych zgód dla tej roli.</div>
-                                )}
-                                {errors.consents && (
-                                    <div className="text-center">
-                                        <InputError message={errors.consents} />
-                                    </div>
                                 )}
                             </div>
 

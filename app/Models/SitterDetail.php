@@ -17,9 +17,28 @@ class SitterDetail extends Model
         'de',
         'other',
         'region',
+        'photo',
+        'files',
+        'experience',
+        'driveLicense',
+        'expectations',
+        'otherpeople',
+        'internet',
+        'tv',
+        'animals',
+        'smoking',
+        'agreement',
+        'zus',
+        'payment',
+        'bonus',
+        'daysoff',
+        'time',
+        'when',
+        'drive',
     ];
 
     protected $casts = [
         'other' => 'array',
+        'files' => 'array',
     ];
 }
