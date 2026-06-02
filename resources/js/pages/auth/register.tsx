@@ -23,11 +23,19 @@ import { Spinner } from '@/components/ui/spinner';
 import { login } from '@/routes';
 import { store, validateStep1 } from '@/routes/register';
 
-type Props = {
-    passwordRules: string;
+type Consent = {
+    id: number;
+    content: string;
+    required: boolean;
+    type: string;
 };
 
-export default function Register({ passwordRules }: Props) {
+type Props = {
+    passwordRules: string;
+    consents: Record<string, Consent[]>;
+};
+
+export default function Register({ passwordRules, consents }: Props) {
     const [step, setStep] = useState(1);
     const [isValidating, setIsValidating] = useState(false);
 
@@ -35,6 +43,7 @@ export default function Register({ passwordRules }: Props) {
     const [imgSrc, setImgSrc] = useState('');
     const [crop, setCrop] = useState<Crop>();
     const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+    const [scale, setScale] = useState(1);
     const [isCropDialogOpen, setIsCropDialogOpen] = useState(false);
     const [isSelectDialogOpen, setIsSelectDialogOpen] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -79,8 +88,7 @@ export default function Register({ passwordRules }: Props) {
         invoiceAddressPostalCode: '',
         invoiceAddressPlace: '',
         invoiceAddressCountry: 'Polska',
-        agree: false,
-        politicy: false,
+        consents: {} as Record<number, boolean>,
     });
 
     const submit = (e: React.FormEvent) => {
@@ -133,6 +141,7 @@ export default function Register({ passwordRules }: Props) {
     };
 
     const handleCropOpen = () => {
+        setScale(1);
         setIsSelectDialogOpen(false);
         setIsCropDialogOpen(true);
     };
@@ -142,8 +151,8 @@ export default function Register({ passwordRules }: Props) {
         const initialCrop = centerCrop(
             makeAspectCrop(
                 {
-                    unit: '%',
-                    width: 90,
+                    unit: 'px',
+                    width: 200,
                 },
                 1, // Kwadratowy aspect ratio
                 width,
@@ -161,33 +170,69 @@ export default function Register({ passwordRules }: Props) {
         }
 
         const canvas = document.createElement('canvas');
-        const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
-        const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
-        canvas.width = completedCrop.width;
-        canvas.height = completedCrop.height;
         const ctx = canvas.getContext('2d');
 
-        if (ctx) {
-            ctx.drawImage(
-                imgRef.current,
-                completedCrop.x * scaleX,
-                completedCrop.y * scaleY,
-                completedCrop.width * scaleX,
-                completedCrop.height * scaleY,
-                0,
-                0,
-                completedCrop.width,
-                completedCrop.height
-            );
-
-            canvas.toBlob((blob) => {
-                if (blob) {
-                    const file = new File([blob], 'logo.png', { type: 'image/png' });
-                    setData('fileuploadCard', file);
-                    setPreviewUrl(URL.createObjectURL(blob));
-                }
-            }, 'image/png');
+        if (!ctx) {
+            return;
         }
+
+        const naturalWidth = imgRef.current.naturalWidth;
+        const naturalHeight = imgRef.current.naturalHeight;
+        const displayedWidth = imgRef.current.width;
+        const displayedHeight = imgRef.current.height;
+
+        const scaleX = naturalWidth / displayedWidth;
+        const scaleY = naturalHeight / displayedHeight;
+
+        // Rozmiar wyjściowy canvasa
+        canvas.width = completedCrop.width;
+        canvas.height = completedCrop.height;
+
+        ctx.save();
+
+        // 1. Obliczamy współrzędne środka obrazu w układzie layoutowym
+        const centerX = displayedWidth / 2;
+        const centerY = displayedHeight / 2;
+
+        // 2. Przekształcamy współrzędne cropa (x, y) z układu widocznego (po transform: scale)
+        // do układu layoutowego obrazka (bez scale).
+        // Wzór na transformację z punktu layout P do widocznego V przy transform-origin: center:
+        // V = Center + (P - Center) * Scale
+        // Zatem: P = Center + (V - Center) / Scale
+
+        const getLayoutPos = (v: number, center: number) => center + (v - center) / scale;
+
+        const layoutX1 = getLayoutPos(completedCrop.x, centerX);
+        const layoutY1 = getLayoutPos(completedCrop.y, centerY);
+        const layoutX2 = getLayoutPos(completedCrop.x + completedCrop.width, centerX);
+        const layoutY2 = getLayoutPos(completedCrop.y + completedCrop.height, centerY);
+
+        const sourceX = layoutX1 * scaleX;
+        const sourceY = layoutY1 * scaleY;
+        const sourceWidth = (layoutX2 - layoutX1) * scaleX;
+        const sourceHeight = (layoutY2 - layoutY1) * scaleY;
+
+        ctx.drawImage(
+            imgRef.current,
+            sourceX,
+            sourceY,
+            sourceWidth,
+            sourceHeight,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        ctx.restore();
+
+        canvas.toBlob((blob) => {
+            if (blob) {
+                const file = new File([blob], 'logo.png', { type: 'image/png' });
+                setData('fileuploadCard', file);
+                setPreviewUrl(URL.createObjectURL(blob));
+            }
+        }, 'image/png');
 
         setIsCropDialogOpen(false);
     };
@@ -196,6 +241,24 @@ export default function Register({ passwordRules }: Props) {
         return null;
     }
 
+    const getConsentsForRole = () => {
+        if (data.role_id === '2') {
+            return consents['Rejestracja pracodawcy'] || [];
+        }
+
+        if (data.role_id === '3') {
+            return consents['Rejestracja opiekunki'] || [];
+        }
+
+        if (data.role_id === '5') {
+            return consents['Aplikacja do wielu'] || [];
+        }
+
+        return [];
+    };
+
+    const currentConsents = getConsentsForRole();
+
     return (
         <>
             <Head title="Zarejestruj się" />
@@ -203,7 +266,7 @@ export default function Register({ passwordRules }: Props) {
                 <div className="grid gap-6">
                     {step === 1 && (
                         <div className="grid gap-2">
-                            <Label>Typ konta</Label>
+                            <Label>`     konta</Label>
                             <div className="grid grid-cols-3 gap-4">
                                 <button
                                     type="button"
@@ -554,31 +617,34 @@ export default function Register({ passwordRules }: Props) {
                                     </div>
 
                                     <div className="grid gap-4 py-4">
-                                        <div className="flex items-start gap-3">
-                                            <Checkbox
-                                                id="agree"
-                                                checked={data.agree}
-                                                onCheckedChange={(checked) => setData('agree', checked === true)}
-                                                className="cursor-pointer"
-                                            />
-                                            <Label htmlFor="agree" className="cursor-pointer text-xs font-normal leading-normal">
-                                                Wyrażam zgodę na przetwarzanie moich danych osobowych przez WORK 4 YOU GLOBAL LTD z siedzibą w Wielkiej Brytanii, dla potrzeb niezbędnych w celu realizacji umowy o świadczenie usług drogą elektroniczną i korzystanie z Serwisu www.dobrasztela.pl.*
-                                            </Label>
-                                        </div>
-                                        <InputError message={errors.agree} />
-
-                                        <div className="flex items-start gap-3">
-                                            <Checkbox
-                                                id="politicy"
-                                                checked={data.politicy}
-                                                onCheckedChange={(checked) => setData('politicy', checked === true)}
-                                                className="cursor-pointer"
-                                            />
-                                            <Label htmlFor="politicy" className="cursor-pointer text-xs font-normal leading-normal">
-                                                Akceptuje <TextLink href="#">Regulaminy</TextLink> i <TextLink href="#">Politykę Prywatności</TextLink>*
-                                            </Label>
-                                        </div>
-                                        <InputError message={errors.politicy} />
+                                        {currentConsents && currentConsents.length > 0 ? (
+                                            currentConsents.map((consent) => (
+                                                <div key={consent.id} className="flex flex-col gap-1">
+                                                    <div className="flex items-start gap-3">
+                                                        <Checkbox
+                                                            id={`consent-${consent.id}`}
+                                                            checked={data.consents[consent.id] || false}
+                                                            onCheckedChange={(checked) => {
+                                                                setData('consents', {
+                                                                    ...data.consents,
+                                                                    [consent.id]: checked === true,
+                                                                });
+                                                            }}
+                                                            className="cursor-pointer"
+                                                        />
+                                                        <Label
+                                                            htmlFor={`consent-${consent.id}`}
+                                                            className="cursor-pointer text-xs font-normal leading-normal"
+                                                            dangerouslySetInnerHTML={{ __html: consent.content }}
+                                                        />
+                                                    </div>
+                                                    <InputError message={errors[`consents.${consent.id}` as keyof typeof errors]} />
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-xs text-muted-foreground italic">Brak wymaganych zgód dla tej roli.</div>
+                                        )}
+                                        <InputError message={errors.consents} />
                                     </div>
 
                                     <div className="mt-6 flex flex-col items-center gap-4">
@@ -669,6 +735,37 @@ export default function Register({ passwordRules }: Props) {
                                 <InputError message={errors.password_confirmation} />
                             </div>
 
+                            <div className="grid gap-4 py-4">
+                                {currentConsents && currentConsents.length > 0 ? (
+                                    currentConsents.map((consent) => (
+                                        <div key={consent.id} className="flex flex-col gap-1">
+                                            <div className="flex items-start gap-3">
+                                                <Checkbox
+                                                    id={`consent-${consent.id}`}
+                                                    checked={data.consents[consent.id] || false}
+                                                    onCheckedChange={(checked) => {
+                                                        setData('consents', {
+                                                            ...data.consents,
+                                                            [consent.id]: checked === true,
+                                                        });
+                                                    }}
+                                                    className="cursor-pointer"
+                                                />
+                                                <Label
+                                                    htmlFor={`consent-${consent.id}`}
+                                                    className="cursor-pointer text-xs font-normal leading-normal"
+                                                    dangerouslySetInnerHTML={{ __html: consent.content }}
+                                                />
+                                            </div>
+                                            <InputError message={errors[`consents.${consent.id}` as keyof typeof errors]} />
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-xs text-muted-foreground italic">Brak wymaganych zgód dla tej roli.</div>
+                                )}
+                                <InputError message={errors.consents} />
+                            </div>
+
                             <Button type="submit" className="mt-2 w-full" disabled={processing}>
                                 {processing && <Spinner />}
                                 Utwórz konto
@@ -688,23 +785,35 @@ export default function Register({ passwordRules }: Props) {
             <Dialog open={isSelectDialogOpen} onOpenChange={setIsSelectDialogOpen}>
                 <DialogContent className="sm:max-w-sm">
                     <DialogHeader>
-                        <DialogTitle>Opcje przesyłania</DialogTitle>
+                        <DialogTitle className="text-center">Wybierz sposób dodania logo</DialogTitle>
                     </DialogHeader>
-                    <div className="flex flex-col gap-4 py-4">
-                        <Button type="button" onClick={handleCropOpen} variant="outline" className="flex items-center gap-2 py-8 h-auto flex-col">
-                            <Briefcase className="h-6 w-6 text-primary" />
-                            <div className="flex flex-col items-center">
-                                <span className="font-bold">Przytnij logotyp</span>
-                                <span className="text-xs text-muted-foreground">Dostosuj kadr obrazu</span>
+                    <div className="grid grid-cols-2 gap-3 py-4">
+                        <button
+                            type="button"
+                            onClick={handleCropOpen}
+                            className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-border bg-card p-4 transition-all hover:bg-brand-light-pink hover:shadow-sm"
+                        >
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/5 transition-colors group-hover:bg-primary/10">
+                                <Briefcase className="h-5 w-5 text-primary" />
                             </div>
-                        </Button>
-                        <Button type="button" onClick={handleNoCrop} variant="outline" className="flex items-center gap-2 py-8 h-auto flex-col">
-                            <Upload className="h-6 w-6 text-primary" />
-                            <div className="flex flex-col items-center">
-                                <span className="font-bold">Dodaj bez przycinania</span>
-                                <span className="text-xs text-muted-foreground">Wrzuc oryginalny plik</span>
+                            <div className="flex flex-col items-center text-center">
+                                <span className="text-sm font-semibold">Przytnij</span>
+                                <span className="text-[10px] text-muted-foreground">Dostosuj kadr</span>
                             </div>
-                        </Button>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleNoCrop}
+                            className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-border bg-card p-4 transition-all hover:bg-brand-light-pink hover:shadow-sm"
+                        >
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/5 transition-colors group-hover:bg-primary/10">
+                                <Upload className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="flex flex-col items-center text-center">
+                                <span className="text-sm font-semibold">Oryginał</span>
+                                <span className="text-[10px] text-muted-foreground">Bez zmian</span>
+                            </div>
+                        </button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -716,21 +825,43 @@ export default function Register({ passwordRules }: Props) {
                     </DialogHeader>
                     <div className="flex flex-col items-center justify-center overflow-hidden">
                         {!!imgSrc && (
-                            <ReactCrop
-                                crop={crop}
-                                onChange={(c) => setCrop(c)}
-                                onComplete={(c) => setCompletedCrop(c)}
-                                aspect={1}
-                                circularCrop={false}
-                            >
-                                <img
-                                    ref={imgRef}
-                                    alt="Crop me"
-                                    src={imgSrc}
-                                    onLoad={onImageLoad}
-                                    style={{ maxHeight: '60vh' }}
-                                />
-                            </ReactCrop>
+                            <>
+                                <div className="mb-4 flex w-full flex-col gap-2 px-4">
+                                    <div className="flex items-center justify-between text-xs font-medium">
+                                        <span>Zoom</span>
+                                        <span>{Math.round(scale * 100)}%</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={3}
+                                        step={0.1}
+                                        value={scale}
+                                        onChange={(e) => setScale(Number(e.target.value))}
+                                        className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-primary/20 accent-primary"
+                                    />
+                                </div>
+                                <ReactCrop
+                                    crop={crop}
+                                    onChange={(c) => setCrop(c)}
+                                    onComplete={(c) => setCompletedCrop(c)}
+                                    aspect={1}
+                                    circularCrop={false}
+                                    locked
+                                >
+                                    <img
+                                        ref={imgRef}
+                                        alt="Crop me"
+                                        src={imgSrc}
+                                        onLoad={onImageLoad}
+                                        style={{
+                                            maxHeight: '60vh',
+                                            transform: `scale(${scale})`,
+                                            transformOrigin: 'center',
+                                        }}
+                                    />
+                                </ReactCrop>
+                            </>
                         )}
                     </div>
                     <DialogFooter>

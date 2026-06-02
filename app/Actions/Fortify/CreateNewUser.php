@@ -14,6 +14,7 @@ use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
@@ -84,6 +85,14 @@ class CreateNewUser implements CreatesNewUsers
             'role_id' => ['required', 'in:2,3,5'], // agency, sitter, carrier
         ];
 
+        // Reguły wspólne dla ról wymagających zgód (2, 3, 5)
+        if (isset($input['role_id']) && in_array((int) $input['role_id'], [2, 3, 5])) {
+            $rules = array_merge($rules, [
+                'consents' => ['required', 'array'],
+                'consents.*' => ['accepted'],
+            ]);
+        }
+
         // Reguły dla Agencji (rola 2)
         if (isset($input['role_id']) && (int) $input['role_id'] === 2) {
             $rules = array_merge($rules, $this->agencyStepOneRules(), [
@@ -95,8 +104,6 @@ class CreateNewUser implements CreatesNewUsers
                 'invoiceAddressPostalCode' => ['required', 'regex:/^[0-9a-zA-Z-]{5,6}$/'],
                 'invoiceAddressPlace' => ['required', 'string', 'max:255'],
                 'invoiceAddressCountry' => ['required', 'string', 'max:255'],
-                'agree' => ['accepted'],
-                'politicy' => ['accepted'],
             ]);
         } else {
             $rules['name'] = $this->nameRules();
@@ -118,6 +125,11 @@ class CreateNewUser implements CreatesNewUsers
                 $imagePath = null;
                 if (isset($input['fileuploadCard']) && $input['fileuploadCard'] instanceof UploadedFile) {
                     $imagePath = $input['fileuploadCard']->store('agency/'.$user->id, 'public');
+
+                    // Dodatkowo ustawiamy avatar dla użytkownika, aby był widoczny w dashboardzie
+                    $user->update([
+                        'avatar' => Storage::disk('public')->url($imagePath)
+                    ]);
                 }
 
                 // Tworzenie AgencyDetail
