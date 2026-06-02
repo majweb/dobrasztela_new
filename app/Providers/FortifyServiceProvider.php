@@ -2,10 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\Consent;
+use App\Models\Country;
+use App\Models\Land;
+use App\Models\Lang;
+use App\Models\LangLevel;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -69,15 +75,18 @@ class FortifyServiceProvider extends ServiceProvider
         ]));
 
         Fortify::registerView(function () {
-            $consents = DB::table('consents')
-                ->whereIn('type', ['Rejestracja pracodawcy', 'Rejestracja opiekunki', 'Aplikacja do wielu'])
-                ->get()
-                ->groupBy('type');
+            $consents = Cache::rememberForever('register_consents', function () {
+                $consents = Consent::whereIn('type', ['Rejestracja pracodawcy', 'Rejestracja opiekunki', 'Aplikacja do wielu'])
+                    ->get()
+                    ->groupBy('type');
 
-            $langs = DB::table('langs')->get();
-            $langLevels = DB::table('lang_levels')->get();
-            $countries = DB::table('countries')->get();
-            $lands = DB::table('lands')->get();
+                return $consents->map(fn($group) => $group->values()->toArray())->toArray();
+            });
+
+            $langs = Cache::rememberForever('register_langs', fn () => Lang::all()->toArray());
+            $langLevels = Cache::rememberForever('register_lang_levels', fn () => LangLevel::all()->toArray());
+            $countries = Cache::rememberForever('register_countries', fn () => Country::all()->toArray());
+            $lands = Cache::rememberForever('register_lands', fn () => Land::all()->toArray());
 
             return Inertia::render('auth/register', [
                 'passwordRules' => Password::defaults()->toPasswordRulesString(),

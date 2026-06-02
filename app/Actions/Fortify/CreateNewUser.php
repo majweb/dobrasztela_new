@@ -16,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -129,10 +130,12 @@ class CreateNewUser implements CreatesNewUsers
             $type = $roleTypeMap[(int) $input['role_id']] ?? null;
 
             if ($type) {
-                $requiredConsentIds = Consent::where('type', $type)
-                    ->where('required', 1)
-                    ->pluck('id')
-                    ->toArray();
+                $requiredConsentIds = Cache::rememberForever("required_consents_{$type}", function () use ($type) {
+                    return Consent::where('type', $type)
+                        ->where('required', 1)
+                        ->pluck('id')
+                        ->toArray();
+                });
 
                 foreach ($requiredConsentIds as $id) {
                     $rules["consents.{$id}"] = ['accepted'];

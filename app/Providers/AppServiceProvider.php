@@ -2,6 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\Consent;
+use App\Models\Country;
+use App\Models\Land;
+use App\Models\Lang;
+use App\Models\LangLevel;
+use App\Observers\ConsentObserver;
+use App\Observers\CountryObserver;
+use App\Observers\LandObserver;
+use App\Observers\LangLevelObserver;
+use App\Observers\LangObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +34,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        Consent::observe(ConsentObserver::class);
+        Lang::observe(LangObserver::class);
+        LangLevel::observe(LangLevelObserver::class);
+        Country::observe(CountryObserver::class);
+        Land::observe(LandObserver::class);
     }
 
     /**

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->text('content');
             $table->string('type');
             $table->boolean('required')->default(1);
+            $table->string('lang')->nullable()->default('pl');
             $table->timestamps();
         });
     }

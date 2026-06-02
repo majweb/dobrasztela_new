@@ -14,8 +14,11 @@ return new class extends Migration
         Schema::create('countries', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->string('flag');
             $table->string('slug');
-            $table->string('flag')->nullable();
+            $table->boolean('active')->default(1);
+            $table->boolean('only_carriers')->default(0)->comment('Czy widoczne tylko w przewoznikacj');
+            $table->boolean('both_type')->default(1)->comment('Czy widoczne 2 typy');
             $table->timestamps();
         });
     }

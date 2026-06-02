@@ -42,7 +42,13 @@ type Props = {
     lands: { id: number; name: string; short: string; country_id: number }[];
 };
 
-export default function Register({ passwordRules, consents, langs, langLevels, lands }: Props) {
+export default function Register({
+    passwordRules,
+    consents = {},
+    langs = [],
+    langLevels = [],
+    lands = [],
+}: Props) {
     const [step, setStep] = useState(1);
     const [isMounted, setIsMounted] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
@@ -60,29 +66,33 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
 
     const [langMenuOpen, setLangMenuOpen] = useState(false);
 
+    const languagesList = Array.isArray(langs)
+        ? langs
+              .filter((l) => {
+                  const name = (l.name || (l as any).lang || '').toLowerCase();
 
-    const languagesList = langs
-        .filter(l => {
-            const name = (l.name || (l as any).lang || '').toLowerCase();
+                  return name !== 'niemiecki' && name !== 'niemiecki (wszystkie poziomy)';
+              })
+              .map((l) => ({ label: l.name || (l as any).lang, value: l.id, type: 'other' }))
+        : [];
 
-            return name !== 'niemiecki' && name !== 'niemiecki (wszystkie poziomy)';
-        })
-        .map(l => ({ label: l.name || (l as any).lang, value: l.id, type: 'other' }));
-
-    const regionsList = lands
-        .filter(l => l.country_id === 11) // Polska ID 11
-        .map(l => ({
-            label: l.name,
-            value: l.id
-        }));
+    const regionsList = Array.isArray(lands)
+        ? lands
+              .filter((l) => l.country_id === 11) // Polska ID 11
+              .map((l) => ({
+                  label: l.name,
+                  value: l.id,
+              }))
+        : [];
 
     const langOptions = useMemo(() => {
-        const germanLevels = langLevels
-            .map(level => ({
-                label: (level as any).name || (level as any).level || (level as any).lang,
-                value: level.id,
-                type: 'de'
-            }));
+        const germanLevels = Array.isArray(langLevels)
+            ? langLevels.map((level) => ({
+                  label: (level as any).name || (level as any).level || (level as any).lang,
+                  value: level.id,
+                  type: 'de',
+              }))
+            : [];
 
         const options = [];
 
@@ -973,19 +983,22 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                         onMenuClose={() => setLangMenuOpen(false)}
                                         aria-invalid={!!(errors as any).de}
                                         value={
-                                            data.de.type === 'de' && data.de.value
+                                            data.de.type === 'de' && data.de.value && Array.isArray(langLevels)
                                                 ? {
-                                                    label: (langLevels.find(l => l.id === (data.de.value as number)) as any)?.name || (langLevels.find(l => l.id === (data.de.value as number)) as any)?.level || (langLevels.find(l => l.id === (data.de.value as number)) as any)?.lang,
-                                                    value: data.de.value,
-                                                    type: 'de'
-                                                }
+                                                      label:
+                                                          (langLevels.find((l) => l.id === (data.de.value as number)) as any)?.name ||
+                                                          (langLevels.find((l) => l.id === (data.de.value as number)) as any)?.level ||
+                                                          (langLevels.find((l) => l.id === (data.de.value as number)) as any)?.lang,
+                                                      value: data.de.value,
+                                                      type: 'de',
+                                                  }
                                                 : data.other.length > 0
-                                                    ? {
+                                                  ? {
                                                         label: data.other[0].label,
                                                         value: data.other[0].value,
-                                                        type: 'other'
+                                                        type: 'other',
                                                     }
-                                                    : null
+                                                  : null
                                         }
                                         onChange={(option: any) => {
                                             if (option) {
@@ -1031,12 +1044,12 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                     id="region"
                                                     placeholder="Wybierz województwo"
                                                     options={regionsList}
-                                                    value={regionsList.find(r => r.value === parseInt(data.region))}
+                                                    value={Array.isArray(regionsList) ? regionsList.find((r) => r.value === parseInt(data.region)) : null}
                                                     onChange={(option: any) => setData('region', option?.value.toString() || '')}
                                                     styles={reactSelectStyles}
                                                     isSearchable
                                                     menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                                                    noOptionsMessage={() => "Nie znaleziono województwa"}
+                                                    noOptionsMessage={() => 'Nie znaleziono województwa'}
                                                     aria-invalid={!!errors.region}
                                                 />
                                             ) : (
