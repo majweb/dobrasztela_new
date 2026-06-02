@@ -6,6 +6,8 @@ use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\AgencyCard;
 use App\Models\AgencyDetail;
+use App\Models\CarrierCard;
+use App\Models\CarrierDetail;
 use App\Models\Consent;
 use App\Models\SitterDetail;
 use App\Models\User;
@@ -45,6 +47,25 @@ class CreateNewUser implements CreatesNewUsers
     }
 
     /**
+     * Zwraca reguły walidacji dla pierwszego kroku rejestracji przewoźnika.
+     *
+     * @return array<string, mixed>
+     */
+    public function carrierStepOneRules(): array
+    {
+        return [
+            'email' => $this->emailRules(),
+            'password' => $this->passwordRules(),
+            'firstName' => ['required', 'string', 'min:3', 'max:255'],
+            'lastName' => ['required', 'string', 'min:3', 'max:255'],
+            'phone' => ['required', 'regex:/^[0-9\s\-]+$/', 'unique:carrier_details,phone'],
+            'companyWebsite' => ['required', 'string', 'max:255', 'regex:/^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/'],
+            'buyTicketWebsite' => ['nullable', 'string', 'max:255', 'regex:/^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/'],
+            'fileuploadCard' => ['nullable', 'image', 'max:5120'], // 5MB
+        ];
+    }
+
+    /**
      * Waliduje pierwszy krok rejestracji (obecnie tylko dla agencji).
      */
     public function validateStepOne(Request $request): Response|RedirectResponse|JsonResponse
@@ -57,6 +78,11 @@ class CreateNewUser implements CreatesNewUsers
 
         if ((int) $input['role_id'] === 2) {
             Validator::make($input, $this->agencyStepOneRules())->validate();
+            $request->session()->put('registration_password', $input['password'] ?? null);
+        }
+
+        if ((int) $input['role_id'] === 5) {
+            Validator::make($input, $this->carrierStepOneRules())->validate();
             $request->session()->put('registration_password', $input['password'] ?? null);
         }
 
@@ -129,6 +155,18 @@ class CreateNewUser implements CreatesNewUsers
                 'name' => ['required', 'string', 'max:30'], // Nazwa firmy (do AgencyCard i rekrutera)
                 'invoiceName' => ['required', 'string', 'min:3', 'max:255'],
                 'invoiceNip' => ['required', 'string', 'unique:agency_details,invoiceNip'],
+                'invoiceRegon' => ['nullable', 'string', 'max:255'],
+                'invoiceAddressStreet' => ['required', 'string', 'max:255'],
+                'invoiceAddressPostalCode' => ['required', 'regex:/^[0-9a-zA-Z-]{5,6}$/'],
+                'invoiceAddressPlace' => ['required', 'string', 'max:255'],
+                'invoiceAddressCountry' => ['required', 'string', 'max:255'],
+            ]);
+        } elseif (isset($input['role_id']) && (int) $input['role_id'] === 5) {
+            // Reguły dla Przewoźnika (rola 5)
+            $rules = array_merge($rules, $this->carrierStepOneRules(), [
+                'name' => ['required', 'string', 'max:60'], // Nazwa firmy
+                'invoiceName' => ['required', 'string', 'min:3', 'max:255'],
+                'invoiceNip' => ['required', 'string', 'unique:carrier_details,invoiceNip'],
                 'invoiceRegon' => ['nullable', 'string', 'max:255'],
                 'invoiceAddressStreet' => ['required', 'string', 'max:255'],
                 'invoiceAddressPostalCode' => ['required', 'regex:/^[0-9a-zA-Z-]{5,6}$/'],
@@ -228,6 +266,62 @@ class CreateNewUser implements CreatesNewUsers
                     'agency_id' => $user->id,
                     'password' => Hash::make($input['password']),
                     'status' => 'active',
+                ]);
+            }
+
+            if ((int) $input['role_id'] === 5) {
+                // Obsługa logotypu
+                $imagePath = 'default.png';
+                if (isset($input['fileuploadCard']) && $input['fileuploadCard'] instanceof UploadedFile) {
+                    $imagePath = $input['fileuploadCard']->store('carrier/'.$user->id, 'public');
+                }
+
+                // Dodajemy https:// do stron www jeśli ich nie ma
+                $companyWebsite = $input['companyWebsite'] ?? '';
+                if ($companyWebsite && !str_starts_with($companyWebsite, 'http')) {
+                    $companyWebsite = 'https://' . $companyWebsite;
+                }
+
+                $buyTicketWebsite = $input['buyTicketWebsite'] ?? '';
+                if ($buyTicketWebsite && !str_starts_with($buyTicketWebsite, 'http')) {
+                    $buyTicketWebsite = 'https://' . $buyTicketWebsite;
+                }
+
+                // Tworzenie CarrierDetail
+                CarrierDetail::create([
+                    'user_id' => $user->id,
+                    'firstName' => $input['firstName'],
+                    'lastName' => $input['lastName'],
+                    'phone' => $input['phone'],
+                    'invoiceName' => $input['invoiceName'],
+                    'invoiceNip' => $input['invoiceNip'],
+                    'invoiceRegon' => $input['invoiceRegon'] ?? null,
+                    'invoiceAddressStreet' => $input['invoiceAddressStreet'],
+                    'invoiceAddressPostalCode' => $input['invoiceAddressPostalCode'],
+                    'invoiceAddressPlace' => $input['invoiceAddressPlace'],
+                    'invoiceAddressCountry' => $input['invoiceAddressCountry'],
+                ]);
+
+                // Tworzenie CarrierCard
+                $slug = Str::slug($input['name']);
+                $checkSlug = CarrierCard::where('slug', $slug)->count();
+                if ($checkSlug) {
+                    $slug .= '-'.($checkSlug + 1);
+                }
+
+                CarrierCard::create([
+                    'user_id' => $user->id,
+                    'name' => $input['name'],
+                    'slug' => $slug,
+                    'fileuploadCard' => $imagePath,
+                    'companyAddressStreet' => $input['invoiceAddressStreet'],
+                    'companyAddressPostalCode' => $input['invoiceAddressPostalCode'],
+                    'companyAddressPlace' => $input['invoiceAddressPlace'],
+                    'companyAddressCountry' => $input['invoiceAddressCountry'],
+                    'companyEmail' => $input['email'],
+                    'companyWebsite' => $companyWebsite,
+                    'buyTicketWebsite' => $buyTicketWebsite,
+                    'companyMobile1' => $input['phone'],
                 ]);
             }
 

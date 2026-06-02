@@ -131,6 +131,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
         phone: '',
         companyEmailApplication: '',
         companyWebsite: '',
+        buyTicketWebsite: '',
         fileuploadCard: null as File | null,
         invoiceName: '',
         invoiceNip: '',
@@ -169,6 +170,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
             phone: '',
             companyEmailApplication: '',
             companyWebsite: '',
+            buyTicketWebsite: '',
             fileuploadCard: null,
             invoiceName: '',
             invoiceNip: '',
@@ -193,7 +195,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (data.role_id === '2' && step === 1) {
+        if ((data.role_id === '2' || data.role_id === '5') && step === 1) {
             clearErrors();
 
             router.post(validateStep1().url, data, {
@@ -427,7 +429,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                         </div>
                     )}
 
-                    {data.role_id === '2' ? (
+                    {data.role_id === '2' || data.role_id === '5' ? (
                         <>
                             {step === 1 ? (
                                 <>
@@ -439,7 +441,10 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                 value={data.firstName}
                                                 onChange={(e) => {
                                                     setData('firstName', e.target.value);
-                                                    setData('name', `${e.target.value} ${data.lastName}`.trim());
+
+                                                    if (data.role_id === '2') {
+                                                        setData('name', `${e.target.value} ${data.lastName}`.trim());
+                                                    }
                                                 }}
                                                 aria-invalid={!!errors.firstName}
                                             />
@@ -451,7 +456,10 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                 value={data.lastName}
                                                 onChange={(e) => {
                                                     setData('lastName', e.target.value);
-                                                    setData('name', `${data.firstName} ${e.target.value}`.trim());
+
+                                                    if (data.role_id === '2') {
+                                                        setData('name', `${data.firstName} ${e.target.value}`.trim());
+                                                    }
                                                 }}
                                                 aria-invalid={!!errors.lastName}
                                             />
@@ -493,17 +501,19 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                         )}
                                     </div>
 
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="companyEmailApplication">E-mail do aplikacji<span className="text-brand-burgundy">*</span></Label>
-                                        <Input
-                                            id="companyEmailApplication"
-                                            type="email"
-                                            value={data.companyEmailApplication}
-                                            onChange={(e) => setData('companyEmailApplication', e.target.value)}
-                                            aria-invalid={!!errors.companyEmailApplication}
-                                        />
-                                        <InputError message={errors.companyEmailApplication} />
-                                    </div>
+                                    {data.role_id === '2' && (
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="companyEmailApplication">E-mail do aplikacji<span className="text-brand-burgundy">*</span></Label>
+                                            <Input
+                                                id="companyEmailApplication"
+                                                type="email"
+                                                value={data.companyEmailApplication}
+                                                onChange={(e) => setData('companyEmailApplication', e.target.value)}
+                                                aria-invalid={!!errors.companyEmailApplication}
+                                            />
+                                            <InputError message={errors.companyEmailApplication} />
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
@@ -559,6 +569,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                 onChange={(e) => setData('phone', e.target.value)}
                                                 aria-invalid={!!errors.phone}
                                             />
+                                            <InputError message={errors.phone} />
                                         </div>
                                         <div className="grid gap-2">
                                             <Label htmlFor="companyWebsite">Strona www<span className="text-brand-burgundy">*</span></Label>
@@ -570,11 +581,20 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                 addon="https://"
                                                 aria-invalid={!!errors.companyWebsite}
                                             />
+                                            <InputError message={errors.companyWebsite} />
                                         </div>
-                                        {(errors.phone || errors.companyWebsite) && (
-                                            <div className="col-span-2 space-y-1">
-                                                <InputError message={errors.phone} />
-                                                <InputError message={errors.companyWebsite} />
+                                        {data.role_id === '5' && (
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="buyTicketWebsite">Strona zakupu biletów</Label>
+                                                <Input
+                                                    id="buyTicketWebsite"
+                                                    value={data.buyTicketWebsite}
+                                                    onChange={(e) => setData('buyTicketWebsite', e.target.value)}
+                                                    placeholder="bilety.pl"
+                                                    addon="https://"
+                                                    aria-invalid={!!errors.buyTicketWebsite}
+                                                />
+                                                <InputError message={errors.buyTicketWebsite} />
                                             </div>
                                         )}
                                     </div>
@@ -630,7 +650,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                         <Upload className="h-6 w-6 text-primary" />
                                                     </div>
                                                     <div className="text-center">
-                                                        <span className="text-sm font-bold text-primary">Dodaj logotyp agencji</span>
+                                                        <span className="text-sm font-bold text-primary">Dodaj logotyp {data.role_id === '5' ? 'firmy' : 'agencji'}</span>
                                                         <p className="text-xs text-muted-foreground mt-1">PNG, JPG do 5MB</p>
                                                     </div>
                                                 </button>
@@ -665,10 +685,7 @@ export default function Register({ passwordRules, consents, langs, langLevels, l
                                                 value={data.invoiceName}
                                                 onChange={(e) => {
                                                     setData('invoiceName', e.target.value);
-
-                                                    if (!data.name) {
-                                                        setData('name', e.target.value);
-                                                    }
+                                                    setData('name', e.target.value);
                                                 }}
                                                 aria-invalid={!!errors.invoiceName}
                                             />
